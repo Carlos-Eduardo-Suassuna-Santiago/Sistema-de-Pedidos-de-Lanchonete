@@ -1,0 +1,10 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///./data/lanchonete.db
+      SIMULAR_LENTIDAO: "false"
+    volumes:
+      - ./data:/app/data
