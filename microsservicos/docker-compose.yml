@@ -1,0 +1,104 @@
+version: "3.9"
+
+services:
+
+  # ── Broker de mensagens ───────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: lanchonete-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: lanchonete
+      RABBITMQ_DEFAULT_PASS: lanchonete123
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Serviço Cardápio (porta 8001) ─────────────────────────────────────────
+  servico-cardapio:
+    build: ./servico-cardapio
+    container_name: lanchonete-cardapio
+    ports:
+      - "8001:8000"
+    volumes:
+      - cardapio-db:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/cardapio.db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Serviço Pedidos (porta 8002) ──────────────────────────────────────────
+  servico-pedidos:
+    build: ./servico-pedidos
+    container_name: lanchonete-pedidos
+    ports:
+      - "8002:8000"
+    volumes:
+      - pedidos-db:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/pedidos.db
+      CARDAPIO_URL: http://servico-cardapio:8000
+    depends_on:
+      servico-cardapio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Serviço Pagamento (porta 8003) ────────────────────────────────────────
+  servico-pagamento:
+    build: ./servico-pagamento
+    container_name: lanchonete-pagamento
+    ports:
+      - "8003:8000"
+    volumes:
+      - pagamento-db:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/pagamento.db
+      PEDIDOS_URL: http://servico-pedidos:8000
+      RABBITMQ_URL: amqp://lanchonete:lanchonete123@rabbitmq:5672/
+    depends_on:
+      servico-pedidos:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Serviço Notificação (porta 8004) ──────────────────────────────────────
+  servico-notificacao:
+    build: ./servico-notificacao
+    container_name: lanchonete-notificacao
+    ports:
+      - "8004:8000"
+    volumes:
+      - notificacao-db:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/notificacao.db
+      RABBITMQ_URL: amqp://lanchonete:lanchonete123@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cardapio-db:
+  pedidos-db:
+  pagamento-db:
+  notificacao-db:
